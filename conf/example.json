@@ -1,1 +1,14 @@
-{}
+{
+    "databases": {
+        "memory": {
+            "uri": "sqlite:///:memory:",
+            "kwargs": {}
+        },
+        "testdb": {
+            "uri": "sqlite:///test.db",
+            "kwargs": {
+                "echo": true
+            }
+        }
+    }
+}

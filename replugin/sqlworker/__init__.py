@@ -19,8 +19,9 @@ SQL worker.
 
 import sqlalchemy.types
 
-from sqlalchemy import Table, Column, Metadata
-
+from sqlalchemy import Table, Column, MetaData
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from reworker.worker import Worker
 
 
@@ -42,28 +43,70 @@ class SQLWorker(Worker):
 
     # Subcommand methods
     def create_table(self, body, corr_id, output):
+        """
+        Creates a database table.
+
+        Parameters:
+
+        * body: The message body structure
+        * corr_id: The correlation id of the message
+        * output: The output object back to the user
+        """
         # Get needed variables
         params = body.get('parameters', {})
 
         try:
+            db_name = params['database']
             table_name = params['name']
             columns = params['columns']
 
+            metadata, engine = self._db_connect(db_name)
             self.app_logger.info('Attempting create the table ...')
 
-            # TODO: We need an engine here
             # This dynamically makes the database structure
             # It expects data like:
             #   {"colname": {"type": "Integer", "primary_key": True}}}
-            metadata = MetaData()
             new_table = Table(table_name, metadata)
-            for k, v in info.items():
+            for k, v in columns.items():
                 col_type = getattr(sqlalchemy.types, v['type'])
                 del v['type']
                 new_table.append_column(Column(k, col_type, **v))
+            try:
+                new_table.create()
+            except OperationalError, oe:
+                raise SQLWorkerError(
+                    'Could not create the table %s: %s' % (
+                        params.get('name', 'NAME_NOT_GIVEN'), oe.message))
 
         except KeyError, ke:
+            output.error('Unable to create table %s because of missing input %s' % (
+                params.get('name', 'NAME_NOT_GIVEN'), ke))
             raise SQLWorkerError('Missing input %s' % ke)
+
+    def _db_connect(self, db_name):
+        """
+        Create connection to the database.
+
+        Parameters:
+            * db_name: The name of the databaes key in the configuration file
+        """
+        try:
+            metadata = MetaData()
+            connection_info = self._config['databases'][db_name]
+            connection_str = connection_info['uri']
+            conn_kwargs = connection_info.get('kwargs', {})
+            engine = create_engine(connection_str, **conn_kwargs)
+            # This will fail with OperationalError if we can not conenct.
+            engine.connect()
+            metadata.bind = engine
+            return (metadata, engine)
+        except KeyError:
+            raise SQLWorkerError(
+                'No database configured with the given name. '
+                'Check your database parameter.')
+        except OperationalError:
+            raise SQLWorkerError(
+                'Could not connect to the database requested.')
 
     def process(self, channel, basic_deliver, properties, body, output):
         """
@@ -92,7 +135,7 @@ class SQLWorker(Worker):
                 result = self.create_table(body, corr_id, output)
             else:
                 self.app_logger.warn(
-                    'Could not the implementation of subcommand %s' % (
+                    'Could not find the implementation of subcommand %s' % (
                         subcommand))
                 raise SQLWorkerError('No subcommand implementation')
 
