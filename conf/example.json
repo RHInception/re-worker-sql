@@ -1,4 +1,5 @@
 {
+    "queue": "sql",
     "databases": {
         "memory": {
             "uri": "sqlite:///:memory:",

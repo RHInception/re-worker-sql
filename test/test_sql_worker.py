@@ -172,14 +172,143 @@ class TestSQLWorker(TestCase):
 
             _, engine = worker._db_connect('testdb')
 
-            # This should raise an exception
+            # This should not raise an exception
             assert engine.execute('SELECT * FROM newtable')
+
 
             # This should raise an exception
             self.assertRaises(
                 sqlalchemy.exc.OperationalError,
                  engine.execute,
                  'SELECT * FROM doesnotexist')
+
+            # Manual cleanup
+            os.remove('test.db')
+
+    def test_execute_sql_with_ddl(self):
+        """
+        Verify that raw sql can be executed.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.sqlworker.SQLWorker.notify'),
+                mock.patch('replugin.sqlworker.SQLWorker.send')):
+
+            worker = sqlworker.SQLWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "sql",
+                    "subcommand": "ExecuteSQL",
+                    "database": "testdb",
+                    "sql": "CREATE TABLE test (a int)",
+                },
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            _, engine = worker._db_connect('testdb')
+
+
+            assert engine.execute('SELECT * from test')
+            assert self.app_logger.error.call_count == 0
+            assert worker.send.call_args[0][2]['status'] == 'completed'
+
+            # Manual cleanup
+            os.remove('test.db')
+
+    def test_execute_sql_with_select(self):
+        """
+        Verify that raw sql can be executed.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.sqlworker.SQLWorker.notify'),
+                mock.patch('replugin.sqlworker.SQLWorker.send')):
+
+            worker = sqlworker.SQLWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "sql",
+                    "subcommand": "ExecuteSQL",
+                    "database": "testdb",
+                    "sql": "SELECT 1",
+                },
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            _, engine = worker._db_connect('testdb')
+
+            assert self.app_logger.error.call_count == 0
+            assert worker.send.call_args[0][2]['status'] == 'completed'
+
+            # Manual cleanup
+            os.remove('test.db')
+
+    def test_execute_sql_fails_with_bad_sql(self):
+        """
+        Verify that broken raw sql causes a failure.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.sqlworker.SQLWorker.notify'),
+                mock.patch('replugin.sqlworker.SQLWorker.send')):
+
+            worker = sqlworker.SQLWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "sql",
+                    "subcommand": "ExecuteSQL",
+                    "database": "testdb",
+                    "sql": "doesnotexist",
+                },
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            _, engine = worker._db_connect('testdb')
+
+            assert self.app_logger.error.call_count == 1
+            assert worker.send.call_args[0][2]['status'] == 'failed'
 
             # Manual cleanup
             os.remove('test.db')

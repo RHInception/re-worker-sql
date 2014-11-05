@@ -38,7 +38,7 @@ class SQLWorker(Worker):
     """
 
     #: allowed subcommands
-    subcommands = ('CreateTable', )
+    subcommands = ('CreateTable', 'ExecuteSQL')
     dynamic = []
 
     # Subcommand methods
@@ -81,6 +81,45 @@ class SQLWorker(Worker):
         except KeyError, ke:
             output.error('Unable to create table %s because of missing input %s' % (
                 params.get('name', 'NAME_NOT_GIVEN'), ke))
+            raise SQLWorkerError('Missing input %s' % ke)
+
+    def execute_sql(self, body, corr_id, output):
+        """
+        Executes raw SQL.
+
+        Parameters:
+
+        * body: The message body structure
+        * corr_id: The correlation id of the message
+        * output: The output object back to the user
+        """
+        # Get needed variables
+        params = body.get('parameters', {})
+
+        try:
+            db_name = params['database']
+            sql = params['sql']
+
+            metadata, engine = self._db_connect(db_name)
+            self.app_logger.info('Attempting to execute sql ...')
+
+            try:
+                r = engine.execute(sql)
+                if (r.context.isdelete or
+                        r.context.isupdate or
+                        r.context.isinsert):
+                    return "%s rows effected" % r.rowcount
+                elif r.context.isddl:
+                    return "DDL executed"
+                else:
+                    return "SQL executed"
+            except OperationalError, oe:
+                raise SQLWorkerError(
+                    'Could not execute the given sql: %s' % oe.message)
+
+        except KeyError, ke:
+            output.error('Unable to execute sqlbecause of missing input %s' % (
+               ke))
             raise SQLWorkerError('Missing input %s' % ke)
 
     def _db_connect(self, db_name):
@@ -133,6 +172,11 @@ class SQLWorker(Worker):
                     'Executing subcommand %s for correlation_id %s' % (
                         subcommand, corr_id))
                 result = self.create_table(body, corr_id, output)
+            elif subcommand == 'ExecuteSQL':
+                self.app_logger.info(
+                    'Executing subcommand %s for correlation_id %s' % (
+                        subcommand, corr_id))
+                result = self.execute_sql(body, corr_id, output)
             else:
                 self.app_logger.warn(
                     'Could not find the implementation of subcommand %s' % (
@@ -143,10 +187,9 @@ class SQLWorker(Worker):
             self.send(
                 properties.reply_to,
                 corr_id,
-                result,
-                exchange=''
+                {'status': 'completed', 'data': result},
+                exchange='re'
             )
-
             # Notify on result. Not required but nice to do.
             self.notify(
                 'SQLWorker Executed Successfully',
@@ -168,7 +211,7 @@ class SQLWorker(Worker):
                 properties.reply_to,
                 corr_id,
                 {'status': 'failed'},
-                exchange=''
+                exchange='re'
             )
             self.notify(
                 'SQLWorker Failed',
