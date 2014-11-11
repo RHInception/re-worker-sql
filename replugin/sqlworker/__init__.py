@@ -157,6 +157,9 @@ class SQLWorker(Worker):
         # Ack the original message
         self.ack(basic_deliver)
         corr_id = str(properties.correlation_id)
+        # Notify we are starting
+        self.send(
+            properties.reply_to, corr_id, {'status': 'started'}, exchange='')
 
         try:
             try:
