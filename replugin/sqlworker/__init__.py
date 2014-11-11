@@ -191,7 +191,7 @@ class SQLWorker(Worker):
                 properties.reply_to,
                 corr_id,
                 {'status': 'completed', 'data': result},
-                exchange='re'
+                exchange=''
             )
             # Notify on result. Not required but nice to do.
             self.notify(
@@ -214,7 +214,7 @@ class SQLWorker(Worker):
                 properties.reply_to,
                 corr_id,
                 {'status': 'failed'},
-                exchange='re'
+                exchange=''
             )
             self.notify(
                 'SQLWorker Failed',
