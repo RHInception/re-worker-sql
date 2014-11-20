@@ -20,6 +20,7 @@ Url: https://sqlhub.com/rhinception/re-worker-sql
 BuildArch: noarch
 BuildRequires: python2-devel, python-setuptools
 Requires: re-worker, python-sqlalchemy0.8
+# python-alembic
 
 %description
 A basic SQL worker for Winternewt which allows for specific database
