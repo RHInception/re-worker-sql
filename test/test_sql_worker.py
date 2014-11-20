@@ -184,12 +184,55 @@ class TestSQLWorker(TestCase):
             # This should not raise an exception
             assert engine.execute('SELECT * FROM newtable')
 
-
             # This should raise an exception
-#            self.assertRaises(
-#                sqlalchemy.exc.OperationalError,
-#                 engine.execute,
-#                 'SELECT * FROM doesnotexist')
+            self.assertRaises(
+                sqlalchemy.exc.OperationalError,
+                 engine.execute,
+                 'SELECT * FROM doesnotexist')
+
+    def test_drop_table(self):
+        """
+        Verify drop_table works when all proper information is passed.
+        """
+        self._create_dummy_db()
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.sqlworker.SQLWorker.notify'),
+                mock.patch('replugin.sqlworker.SQLWorker.send')):
+
+            worker = sqlworker.SQLWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "sql",
+                    "subcommand": "DropTable",
+                    "database": "testdb",
+                    "name": "newtable",
+                },
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            _, engine, conn = worker._db_connect('testdb')
+
+            # This should raise an exception since the table does not
+            # exist any longer
+            self.assertRaises(
+                sqlalchemy.exc.OperationalError,
+                 engine.execute,
+                 'SELECT * FROM newtable')
 
     def test_execute_sql_with_ddl(self):
         """

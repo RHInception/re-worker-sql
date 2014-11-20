@@ -44,7 +44,7 @@ class SQLWorker(Worker):
     #: allowed subcommands
     subcommands = (
         'CreateTable', 'ExecuteSQL', 'AlterTableColumns',
-        'AddTableColumns', 'DropTableColumns')
+        'AddTableColumns', 'DropTableColumns', 'DropTable')
     dynamic = []
 
     # Subcommand methods
@@ -124,6 +124,40 @@ class SQLWorker(Worker):
                     'Could not execute the given sql: %s' % oe.message)
         except KeyError, ke:
             output.error('Unable to execute sqlbecause of missing input %s' % (
+               ke))
+            raise SQLWorkerError('Missing input %s' % ke)
+
+    def drop_table(self, body, corr_id, output):
+        """
+        Drops a table.
+
+        Parameters:
+
+        * body: The message body structure
+        * corr_id: The correlation id of the message
+        * output: The output object back to the user
+        """
+        # Get needed variables
+        params = body.get('parameters', {})
+
+        try:
+            db_name = params['database']
+            table_name = params['name']
+
+            metadata, engine, conn = self._db_connect(db_name)
+            session = sessionmaker()(bind=engine)
+            ops = Operations(MigrationContext(conn.dialect, conn, {}))
+
+            try:
+                self.app_logger.info('Attempting to drop a table ...')
+                ops.drop_table(table_name)
+                return "Table %s droppped" % table_name
+            except OperationalError, oe:
+                raise SQLWorkerError(
+                    'Could not execute the given drop table %s' % oe.message)
+            session.flush()
+        except KeyError, ke:
+            output.error('Unable to execute drop table. Missing input %s' % (
                ke))
             raise SQLWorkerError('Missing input %s' % ke)
 
@@ -301,6 +335,11 @@ class SQLWorker(Worker):
                     'Executing subcommand %s for correlation_id %s' % (
                         subcommand, corr_id))
                 result = self.create_table(body, corr_id, output)
+            elif subcommand == 'DropTable':
+                self.app_logger.info(
+                    'Executing subcommand %s for correlation_id %s' % (
+                        subcommand, corr_id))
+                result = self.drop_table(body, corr_id, output)
             elif subcommand == 'AlterTableColumns':
                 self.app_logger.info(
                     'Executing subcommand %s for correlation_id %s' % (
