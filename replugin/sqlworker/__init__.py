@@ -330,42 +330,26 @@ class SQLWorker(Worker):
                 raise SQLWorkerError(
                     'No valid subcommand given. Nothing to do!')
 
+            cmd_method = None
             if subcommand == 'CreateTable':
-                self.app_logger.info(
-                    'Executing subcommand %s for correlation_id %s' % (
-                        subcommand, corr_id))
-                result = self.create_table(body, corr_id, output)
+                cmd_method = self.create_table
             elif subcommand == 'DropTable':
-                self.app_logger.info(
-                    'Executing subcommand %s for correlation_id %s' % (
-                        subcommand, corr_id))
-                result = self.drop_table(body, corr_id, output)
+                cmd_method = self.drop_table
             elif subcommand == 'AlterTableColumns':
-                self.app_logger.info(
-                    'Executing subcommand %s for correlation_id %s' % (
-                        subcommand, corr_id))
-                result = self.alter_table_columns(body, corr_id, output)
+                cmd_method = self.alter_table_columns
             elif subcommand == 'AddTableColumns':
-                self.app_logger.info(
-                    'Executing subcommand %s for correlation_id %s' % (
-                        subcommand, corr_id))
-                result = self.add_table_columns(body, corr_id, output)
+                cmd_method = self.add_table_columns
             elif subcommand == 'DropTableColumns':
-                self.app_logger.info(
-                    'Executing subcommand %s for correlation_id %s' % (
-                        subcommand, corr_id))
-                result = self.drop_table_columns(body, corr_id, output)
+                cmd_method = self.drop_table_columns
             elif subcommand == 'ExecuteSQL':
-                self.app_logger.info(
-                    'Executing subcommand %s for correlation_id %s' % (
-                        subcommand, corr_id))
-                result = self.execute_sql(body, corr_id, output)
+                cmd_method = self.execute_sql
             else:
                 self.app_logger.warn(
                     'Could not find the implementation of subcommand %s' % (
                         subcommand))
                 raise SQLWorkerError('No subcommand implementation')
 
+            result = cmd_method(body, corr_id, output)
             # Send results back
             self.send(
                 properties.reply_to,

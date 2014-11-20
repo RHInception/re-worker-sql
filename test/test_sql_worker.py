@@ -236,7 +236,7 @@ class TestSQLWorker(TestCase):
 
     def test_execute_sql_with_ddl(self):
         """
-        Verify that raw sql can be executed.
+        Verify that raw ddl sql can be executed.
         """
         with nested(
                 mock.patch('pika.SelectConnection'),
