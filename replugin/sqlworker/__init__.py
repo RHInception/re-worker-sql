@@ -44,7 +44,8 @@ class SQLWorker(Worker):
     #: allowed subcommands
     subcommands = (
         'CreateTable', 'ExecuteSQL', 'AlterTableColumns',
-        'AddTableColumns', 'DropTableColumns', 'DropTable')
+        'AddTableColumns', 'DropTableColumns', 'DropTable',
+        'Insert')
     dynamic = []
 
     # Subcommand methods
@@ -282,6 +283,45 @@ class SQLWorker(Worker):
                ke))
             raise SQLWorkerError('Missing input %s' % ke)
 
+    def insert(self, body, corr_id, output):
+        """
+        Adds insert a row or rows into a table.
+
+        Parameters:
+
+        * body: The message body structure
+        * corr_id: The correlation id of the message
+        * output: The output object back to the user
+        """
+        # Get needed variables
+        params = body.get('parameters', {})
+
+        try:
+            db_name = params['database']
+            table_name = params['name']
+            rows = params['rows']
+
+            metadata, engine, conn = self._db_connect(db_name)
+            mctx = MigrationContext.configure(conn)
+
+            try:
+                self.app_logger.info('Attempting to insert into a table ...')
+                table = Table(table_name, metadata, autoload=True)
+                for row in rows:
+                    row_data = {}
+                    for k, v in row.items():
+                        row_data[k] = v
+                    i = table.insert().values(**row_data)
+                    engine.execute(i)
+                return "Insert statements done"
+            except OperationalError, oe:
+                raise SQLWorkerError(
+                    'Could not execute the given insert %s' % oe.message)
+        except KeyError, ke:
+            output.error('Unable to execute insert of missing input %s' % (
+               ke))
+            raise SQLWorkerError('Missing input %s' % ke)
+
     def _db_connect(self, db_name):
         """
         Create connection to the database.
@@ -290,14 +330,13 @@ class SQLWorker(Worker):
             * db_name: The name of the databaes key in the configuration file
         """
         try:
-            metadata = MetaData()
             connection_info = self._config['databases'][db_name]
             connection_str = connection_info['uri']
             conn_kwargs = connection_info.get('kwargs', {})
             engine = create_engine(connection_str, **conn_kwargs)
             # This will fail with OperationalError if we can not conenct.
             conn = engine.connect()
-            metadata.bind = engine
+            metadata = MetaData(bind=engine, reflect=True)
             return (metadata, engine, conn)
         except KeyError:
             raise SQLWorkerError(
@@ -343,6 +382,8 @@ class SQLWorker(Worker):
                 cmd_method = self.drop_table_columns
             elif subcommand == 'ExecuteSQL':
                 cmd_method = self.execute_sql
+            elif subcommand == 'Insert':
+                cmd_method = self.insert
             else:
                 self.app_logger.warn(
                     'Could not find the implementation of subcommand %s' % (

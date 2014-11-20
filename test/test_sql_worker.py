@@ -482,3 +482,57 @@ class TestSQLWorker(TestCase):
                 sqlalchemy.exc.OperationalError,
                  engine.execute,
                  'INSERT INTO newtable VALUES (1, 2);')
+
+    def test_insert(self):
+        """
+        Verify inserting works.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.sqlworker.SQLWorker.notify'),
+                mock.patch('replugin.sqlworker.SQLWorker.send')):
+
+            self._create_dummy_db()
+
+            worker = sqlworker.SQLWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "sql",
+                    "subcommand": "Insert",
+                    "database": "testdb",
+                    "name": "newtable",
+                    "rows": [
+                        {
+                            "a": 10,
+                            "b": 2,
+                        },
+                        {
+                            "a": 15,
+                            "b": 40,
+                        }
+                    ],
+                },
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            _, engine, conn = worker._db_connect('testdb')
+
+            # This should not raise an exception as it includes the new col
+            result = engine.execute(
+                'SELECT COUNT(*) from newtable;').fetchall()[0][0]
+            # We should have 2 rows inserted
+            assert result == 2
