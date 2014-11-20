@@ -19,9 +19,13 @@ SQL worker.
 
 import sqlalchemy.types
 
-from sqlalchemy import Table, Column, MetaData
-from sqlalchemy import create_engine
+from sqlalchemy import Table, Column, MetaData, create_engine
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import sessionmaker
+
+from alembic.migration import MigrationContext
+from alembic.op import Operations
+
 from reworker.worker import Worker
 
 
@@ -38,7 +42,9 @@ class SQLWorker(Worker):
     """
 
     #: allowed subcommands
-    subcommands = ('CreateTable', 'ExecuteSQL')
+    subcommands = (
+        'CreateTable', 'ExecuteSQL', 'AlterTableColumns',
+        'AddTableColumns', 'DropTableColumns')
     dynamic = []
 
     # Subcommand methods
@@ -60,7 +66,7 @@ class SQLWorker(Worker):
             table_name = params['name']
             columns = params['columns']
 
-            metadata, engine = self._db_connect(db_name)
+            metadata, engine, conn = self._db_connect(db_name)
             self.app_logger.info('Attempting create the table ...')
 
             # This dynamically makes the database structure
@@ -100,7 +106,7 @@ class SQLWorker(Worker):
             db_name = params['database']
             sql = params['sql']
 
-            metadata, engine = self._db_connect(db_name)
+            metadata, engine, conn = self._db_connect(db_name)
             self.app_logger.info('Attempting to execute sql ...')
 
             try:
@@ -116,9 +122,129 @@ class SQLWorker(Worker):
             except OperationalError, oe:
                 raise SQLWorkerError(
                     'Could not execute the given sql: %s' % oe.message)
-
         except KeyError, ke:
             output.error('Unable to execute sqlbecause of missing input %s' % (
+               ke))
+            raise SQLWorkerError('Missing input %s' % ke)
+
+    def drop_table_columns(self, body, corr_id, output):
+        """
+        Drops a tables columns.
+
+        Parameters:
+
+        * body: The message body structure
+        * corr_id: The correlation id of the message
+        * output: The output object back to the user
+        """
+        # Get needed variables
+        params = body.get('parameters', {})
+
+        try:
+            db_name = params['database']
+            table_name = params['name']
+            columns = params['columns']
+
+            metadata, engine, conn = self._db_connect(db_name)
+            session = sessionmaker()(bind=engine)
+            ops = Operations(MigrationContext(conn.dialect, conn, {}))
+
+            try:
+                self.app_logger.info('Attempting to drop columns ...')
+                for column in columns:
+                    ops.drop_column(table_name, column)
+                return "DDL executed"
+            except OperationalError, oe:
+                raise SQLWorkerError(
+                    'Could not execute the given alter %s' % oe.message)
+            session.flush()
+        except KeyError, ke:
+            output.error('Unable to execute alter of missing input %s' % (
+               ke))
+            raise SQLWorkerError('Missing input %s' % ke)
+
+    def alter_table_columns(self, body, corr_id, output):
+        """
+        Alters a tables columns.
+
+        Parameters:
+
+        * body: The message body structure
+        * corr_id: The correlation id of the message
+        * output: The output object back to the user
+        """
+        # Get needed variables
+        params = body.get('parameters', {})
+
+        try:
+            db_name = params['database']
+            table_name = params['name']
+            columns = params['columns']
+
+            metadata, engine, conn = self._db_connect(db_name)
+            session = sessionmaker()(bind=engine)
+            mctx = MigrationContext.configure(conn)
+
+            try:
+                self.app_logger.info('Attempting to alter a table ...')
+                add_cols = []
+                for k, v in columns.items():
+                    col_type = getattr(sqlalchemy.types, v['type'])
+                    del v['type']
+                    mc = Column(k, col_type, **v)
+                    new_kwargs = {
+                        'type_': mc.type,
+                        'nullable': mc.nullable,
+                        'autoincrement': mc.autoincrement,
+                    }
+                    mctx.impl.alter_column(table_name, k, **new_kwargs)
+                return "DDL executed"
+            except OperationalError, oe:
+                raise SQLWorkerError(
+                    'Could not execute the given alter %s' % oe.message)
+            except Exception, ex:
+                raise ex
+        except KeyError, ke:
+            output.error('Unable to execute alter of missing input %s' % (
+               ke))
+            raise SQLWorkerError('Missing input %s' % ke)
+
+    def add_table_columns(self, body, corr_id, output):
+        """
+        Adds columns to a table.
+
+        Parameters:
+
+        * body: The message body structure
+        * corr_id: The correlation id of the message
+        * output: The output object back to the user
+        """
+        # Get needed variables
+        params = body.get('parameters', {})
+
+        try:
+            db_name = params['database']
+            table_name = params['name']
+            columns = params['columns']
+
+            metadata, engine, conn = self._db_connect(db_name)
+            session = sessionmaker()(bind=engine)
+            mctx = MigrationContext.configure(conn)
+
+            try:
+                self.app_logger.info('Attempting to alter a table ...')
+                add_cols = []
+                for k, v in columns.items():
+                    col_type = getattr(sqlalchemy.types, v['type'])
+                    del v['type']
+                    mc = Column(k, col_type, **v)
+                    mctx.impl.add_column(table_name, mc)
+                return "DDL executed"
+            except OperationalError, oe:
+                raise SQLWorkerError(
+                    'Could not execute the given alter %s' % oe.message)
+        except KeyError, ke:
+            output.error('Unable to execute alter of missing input %s' % (
                ke))
             raise SQLWorkerError('Missing input %s' % ke)
 
@@ -136,9 +262,9 @@ class SQLWorker(Worker):
             conn_kwargs = connection_info.get('kwargs', {})
             engine = create_engine(connection_str, **conn_kwargs)
             # This will fail with OperationalError if we can not conenct.
-            engine.connect()
+            conn = engine.connect()
             metadata.bind = engine
-            return (metadata, engine)
+            return (metadata, engine, conn)
         except KeyError:
             raise SQLWorkerError(
                 'No database configured with the given name. '
@@ -175,6 +301,21 @@ class SQLWorker(Worker):
                     'Executing subcommand %s for correlation_id %s' % (
                         subcommand, corr_id))
                 result = self.create_table(body, corr_id, output)
+            elif subcommand == 'AlterTableColumns':
+                self.app_logger.info(
+                    'Executing subcommand %s for correlation_id %s' % (
+                        subcommand, corr_id))
+                result = self.alter_table_columns(body, corr_id, output)
+            elif subcommand == 'AddTableColumns':
+                self.app_logger.info(
+                    'Executing subcommand %s for correlation_id %s' % (
+                        subcommand, corr_id))
+                result = self.add_table_columns(body, corr_id, output)
+            elif subcommand == 'DropTableColumns':
+                self.app_logger.info(
+                    'Executing subcommand %s for correlation_id %s' % (
+                        subcommand, corr_id))
+                result = self.drop_table_columns(body, corr_id, output)
             elif subcommand == 'ExecuteSQL':
                 self.app_logger.info(
                     'Executing subcommand %s for correlation_id %s' % (
