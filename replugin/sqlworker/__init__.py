@@ -45,7 +45,7 @@ class SQLWorker(Worker):
     subcommands = (
         'CreateTable', 'ExecuteSQL', 'AlterTableColumns',
         'AddTableColumns', 'DropTableColumns', 'DropTable',
-        'Insert')
+        'Insert', 'Delete')
     dynamic = []
 
     # Subcommand methods
@@ -322,6 +322,45 @@ class SQLWorker(Worker):
                ke))
             raise SQLWorkerError('Missing input %s' % ke)
 
+    def delete(self, body, corr_id, output):
+        """
+        Adds delete a row or rows into a table.
+
+        Parameters:
+
+        * body: The message body structure
+        * corr_id: The correlation id of the message
+        * output: The output object back to the user
+        """
+        # Get needed variables
+        params = body.get('parameters', {})
+
+        try:
+            db_name = params['database']
+            table_name = params['name']
+            wheres = params['where']
+
+            metadata, engine, conn = self._db_connect(db_name)
+            mctx = MigrationContext.configure(conn)
+
+            try:
+                self.app_logger.info('Attempting to delete from a table ...')
+                table = Table(table_name, metadata, autoload=True)
+                delete = table.delete()
+                for where in wheres:
+                    for colname, valdata in where.items():
+                        col = getattr(table.c, colname)
+                        delete = delete.where(col == valdata)
+                engine.execute(delete)
+                return "Delete statements done"
+            except OperationalError, oe:
+                raise SQLWorkerError(
+                    'Could not execute the given delete %s' % oe.message)
+        except KeyError, ke:
+            output.error('Unable to execute delete of missing input %s' % (
+               ke))
+            raise SQLWorkerError('Missing input %s' % ke)
+
     def _db_connect(self, db_name):
         """
         Create connection to the database.
@@ -384,6 +423,8 @@ class SQLWorker(Worker):
                 cmd_method = self.execute_sql
             elif subcommand == 'Insert':
                 cmd_method = self.insert
+            elif subcommand == 'Delete':
+                cmd_method = self.delete
             else:
                 self.app_logger.warn(
                     'Could not find the implementation of subcommand %s' % (

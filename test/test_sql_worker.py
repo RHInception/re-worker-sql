@@ -43,6 +43,7 @@ class TestSQLWorker(TestCase):
     def _create_dummy_db(self):
         tmp_con = sqlite3.connect('test.db')
         tmp_con.execute('CREATE TABLE newtable (a INTEGER, b INTEGER);')
+        return tmp_con
 
     def setUp(self):
         """
@@ -536,3 +537,55 @@ class TestSQLWorker(TestCase):
                 'SELECT COUNT(*) from newtable;').fetchall()[0][0]
             # We should have 2 rows inserted
             assert result == 2
+
+    def test_delete(self):
+        """
+        Verify deleting works.
+        """
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.sqlworker.SQLWorker.notify'),
+                mock.patch('replugin.sqlworker.SQLWorker.send')):
+
+            tmp_con = self._create_dummy_db()
+            tmp_con.execute('INSERT INTO newtable VALUES (0, 0);')
+            tmp_con.execute('INSERT INTO newtable VALUES (1, 1);')
+            tmp_con.commit()
+            worker = sqlworker.SQLWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "sql",
+                    "subcommand": "Delete",
+                    "database": "testdb",
+                    "name": "newtable",
+                    "where": [
+                        {
+                            "a": 0,
+                            "b": 0,
+                        },
+                    ],
+                },
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            _, engine, conn = worker._db_connect('testdb')
+
+            # This should not raise an exception as it includes the new col
+            result = engine.execute(
+                'SELECT COUNT(*) from newtable;').fetchall()[0][0]
+            # We should have 1 row left as we deleted the other row
+            assert result == 1
