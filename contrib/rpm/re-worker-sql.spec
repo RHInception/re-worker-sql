@@ -19,8 +19,7 @@ Url: https://sqlhub.com/rhinception/re-worker-sql
 
 BuildArch: noarch
 BuildRequires: python2-devel, python-setuptools
-Requires: re-worker, python-sqlalchemy0.8
-# python-alembic
+Requires: re-worker, python-sqlalchemy0.8, python-alembic
 
 %description
 A basic SQL worker for Winternewt which allows for specific database
@@ -43,6 +42,9 @@ modification functionality.
 
 
 %changelog
+* Tue Nov 21 2014 Steve Milner <stevem@gnulinux.net> - 0.0.1-4
+- Added alembic to requires.
+
 * Tue Nov 11 2014 Steve Milner <stevem@gnulinux.net> - 0.0.1-3
 - Must respond off of the exchange with current MQ software.
 
