@@ -20,7 +20,7 @@ SQL worker.
 import sqlalchemy.types
 
 from sqlalchemy import Table, Column, MetaData, create_engine
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import sessionmaker
 
 from alembic.migration import MigrationContext
@@ -77,10 +77,15 @@ class SQLWorker(Worker):
             for k, v in columns.items():
                 col_type = getattr(sqlalchemy.types, v['type'])
                 del v['type']
-                new_table.append_column(Column(k, col_type, **v))
+                # Check for length of column
+                length = v.get('length', None)
+                if length:
+                    del v['length']
+                new_column = Column(k, col_type(length), **v)
+                new_table.append_column(new_column)
             try:
                 new_table.create()
-            except OperationalError, oe:
+            except (OperationalError, ProgrammingError), oe:
                 raise SQLWorkerError(
                     'Could not create the table %s: %s' % (
                         params.get('name', 'NAME_NOT_GIVEN'), oe.message))
@@ -120,7 +125,7 @@ class SQLWorker(Worker):
                     return "DDL executed"
                 else:
                     return "SQL executed"
-            except OperationalError, oe:
+            except (OperationalError, ProgrammingError), oe:
                 raise SQLWorkerError(
                     'Could not execute the given sql: %s' % oe.message)
         except KeyError, ke:
@@ -226,7 +231,11 @@ class SQLWorker(Worker):
                 for k, v in columns.items():
                     col_type = getattr(sqlalchemy.types, v['type'])
                     del v['type']
-                    mc = Column(k, col_type, **v)
+                    # Check for length of column
+                    length = v.get('length', None)
+                    if length:
+                        del v['length']
+                    mc = Column(k, col_type(length), **v)
                     new_kwargs = {
                         'type_': mc.type,
                         'nullable': mc.nullable,
@@ -272,9 +281,13 @@ class SQLWorker(Worker):
                 for k, v in columns.items():
                     col_type = getattr(sqlalchemy.types, v['type'])
                     del v['type']
-                    mc = Column(k, col_type, **v)
+                    # Check for length of column
+                    length = v.get('length', None)
+                    if length:
+                        del v['length']
+                    mc = Column(k, col_type(length), autoincrement=False, **v)
                     mctx.impl.add_column(table_name, mc)
-                return "DDL executed"
+                return "Added columns"
             except OperationalError, oe:
                 raise SQLWorkerError(
                     'Could not execute the given alter %s' % oe.message)

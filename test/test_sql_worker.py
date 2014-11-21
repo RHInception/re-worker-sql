@@ -20,7 +20,6 @@ import os
 import pika
 import mock
 import sqlalchemy
-import sqlite3
 
 from contextlib import nested
 
@@ -184,10 +183,12 @@ class TestSQLWorker(TestCase):
             assert engine.execute('SELECT * FROM test_newtable')
 
             # This should raise an exception
-            self.assertRaises(
-                sqlalchemy.exc.OperationalError,
-                 engine.execute,
-                 'SELECT * FROM doesnotexist')
+            try:
+                 engine.execute('SELECT * FROM doesnotexist')
+                 self.fail('doesnotexist did not rais an exception')
+            except (sqlalchemy.exc.OperationalError,
+                    sqlalchemy.exc.ProgrammingError):
+                pass
 
     def test_drop_table(self):
         """
@@ -230,10 +231,12 @@ class TestSQLWorker(TestCase):
 
             # This should raise an exception since the table does not
             # exist any longer
-            self.assertRaises(
-                sqlalchemy.exc.OperationalError,
-                 engine.execute,
-                 'SELECT * FROM ' + table_name)
+            try:
+                 engine.execute('SELECT * FROM ' + table_name)
+                 self.fail('The table was not dropped')
+            except (sqlalchemy.exc.OperationalError,
+                    sqlalchemy.exc.ProgrammingError):
+                pass
 
     def test_execute_sql_with_ddl(self):
         """
@@ -421,7 +424,7 @@ class TestSQLWorker(TestCase):
                     "database": "testdb",
                     "name": table_name,
                     "columns": {
-                        "c": {"type": "String"},
+                        "c": {"type": "String", "length": 255},
                         "d": {"type": "Integer"},
                     },
                 },
@@ -466,7 +469,7 @@ class TestSQLWorker(TestCase):
                     "database": "testdb",
                     "name": table_name,
                     "columns": {
-                        "c": {"type": "String"}
+                        "c": {"type": "String", "length": 255}
                     }
                 },
             }
@@ -483,10 +486,12 @@ class TestSQLWorker(TestCase):
             assert engine.execute('INSERT INTO ' + table_name +' VALUES (1, 2, "hi");')
 
             # This should raise an exception since it doesn't have 3 values
-            self.assertRaises(
-                sqlalchemy.exc.OperationalError,
-                 engine.execute,
-                 'INSERT INTO ' + table_name + ' VALUES (1, 2);')
+            try:
+                 engine.execute('INSERT INTO ' + table_name + ' VALUES (1, 2);')
+                 self.fail('The table was not dropped')
+            except (sqlalchemy.exc.OperationalError,
+                    sqlalchemy.exc.ProgrammingError):
+                pass
 
     def test_insert(self):
         """
