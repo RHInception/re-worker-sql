@@ -40,10 +40,8 @@ MQ_CONF = {
 
 class TestSQLWorker(TestCase):
 
-    def _create_dummy_db(self):
-        tmp_con = sqlite3.connect('test.db')
-        tmp_con.execute('CREATE TABLE newtable (a INTEGER, b INTEGER);')
-        return tmp_con
+    def _create_dummy_db(self, conn, table_name):
+        conn.execute('CREATE TABLE ' + table_name + ' (a INTEGER, b INTEGER);')
 
     def setUp(self):
         """
@@ -166,7 +164,7 @@ class TestSQLWorker(TestCase):
                     "command": "sql",
                     "subcommand": "CreateTable",
                     "database": "testdb",
-                    "name": "newtable",
+                    "name": "test_newtable",
                     "columns": {
                         "colname": {"type": "Integer", "primary_key": True}}
                 },
@@ -183,7 +181,7 @@ class TestSQLWorker(TestCase):
             _, engine, conn = worker._db_connect('testdb')
 
             # This should not raise an exception
-            assert engine.execute('SELECT * FROM newtable')
+            assert engine.execute('SELECT * FROM test_newtable')
 
             # This should raise an exception
             self.assertRaises(
@@ -195,7 +193,7 @@ class TestSQLWorker(TestCase):
         """
         Verify drop_table works when all proper information is passed.
         """
-        self._create_dummy_db()
+        table_name = 'test_droptable'
         with nested(
                 mock.patch('pika.SelectConnection'),
                 mock.patch('replugin.sqlworker.SQLWorker.notify'),
@@ -206,6 +204,10 @@ class TestSQLWorker(TestCase):
                 logger=self.app_logger,
                 config_file='conf/example.json')
 
+
+            _, engine, conn = worker._db_connect('testdb')
+            self._create_dummy_db(conn, table_name)
+
             worker._on_open(self.connection)
             worker._on_channel_open(self.channel)
 
@@ -214,7 +216,7 @@ class TestSQLWorker(TestCase):
                     "command": "sql",
                     "subcommand": "DropTable",
                     "database": "testdb",
-                    "name": "newtable",
+                    "name": table_name,
                 },
             }
 
@@ -226,14 +228,12 @@ class TestSQLWorker(TestCase):
                 body,
                 self.logger)
 
-            _, engine, conn = worker._db_connect('testdb')
-
             # This should raise an exception since the table does not
             # exist any longer
             self.assertRaises(
                 sqlalchemy.exc.OperationalError,
                  engine.execute,
-                 'SELECT * FROM newtable')
+                 'SELECT * FROM ' + table_name)
 
     def test_execute_sql_with_ddl(self):
         """
@@ -270,7 +270,6 @@ class TestSQLWorker(TestCase):
                 self.logger)
 
             _, engine, conn = worker._db_connect('testdb')
-
 
             assert engine.execute('SELECT * from test')
             assert self.app_logger.error.call_count == 0
@@ -356,7 +355,7 @@ class TestSQLWorker(TestCase):
         """
         Verify drop_table_column works when all proper information is passed.
         """
-        self._create_dummy_db()
+        table_name = 'test_drop_table_columns'
         with nested(
                 mock.patch('pika.SelectConnection'),
                 mock.patch('replugin.sqlworker.SQLWorker.notify'),
@@ -369,6 +368,8 @@ class TestSQLWorker(TestCase):
                 logger=self.app_logger,
                 config_file='conf/example.json')
 
+            _, engine, conn = worker._db_connect('testdb')
+            self._create_dummy_db(conn, table_name)
             worker._on_open(self.connection)
             worker._on_channel_open(self.channel)
 
@@ -377,7 +378,7 @@ class TestSQLWorker(TestCase):
                     "command": "sql",
                     "subcommand": "DropTableColumns",
                     "database": "testdb",
-                    "name": "newtable",
+                    "name": table_name,
                     "columns": ['a'],
                 },
             }
@@ -396,7 +397,7 @@ class TestSQLWorker(TestCase):
         """
         Verify alter_table_columns works when all proper information is passed.
         """
-        self._create_dummy_db()
+        table_name = 'test_alter_table_columns'
         with nested(
                 mock.patch('pika.SelectConnection'),
                 mock.patch('replugin.sqlworker.SQLWorker.notify'),
@@ -407,6 +408,9 @@ class TestSQLWorker(TestCase):
                 logger=self.app_logger,
                 config_file='conf/example.json')
 
+            _, engine, conn = worker._db_connect('testdb')
+            self._create_dummy_db(conn, table_name)
+
             worker._on_open(self.connection)
             worker._on_channel_open(self.channel)
 
@@ -415,7 +419,7 @@ class TestSQLWorker(TestCase):
                     "command": "sql",
                     "subcommand": "AlterTableColumns",
                     "database": "testdb",
-                    "name": "newtable",
+                    "name": table_name,
                     "columns": {
                         "c": {"type": "String"},
                         "d": {"type": "Integer"},
@@ -438,17 +442,19 @@ class TestSQLWorker(TestCase):
         """
         Verify add_table_column works when all proper information is passed.
         """
+        table_name = 'test_add_table_columns'
         with nested(
                 mock.patch('pika.SelectConnection'),
                 mock.patch('replugin.sqlworker.SQLWorker.notify'),
                 mock.patch('replugin.sqlworker.SQLWorker.send')):
 
-            self._create_dummy_db()
-
             worker = sqlworker.SQLWorker(
                 MQ_CONF,
                 logger=self.app_logger,
                 config_file='conf/example.json')
+
+            _, engine, conn = worker._db_connect('testdb')
+            self._create_dummy_db(conn, table_name)
 
             worker._on_open(self.connection)
             worker._on_channel_open(self.channel)
@@ -458,7 +464,7 @@ class TestSQLWorker(TestCase):
                     "command": "sql",
                     "subcommand": "AddTableColumns",
                     "database": "testdb",
-                    "name": "newtable",
+                    "name": table_name,
                     "columns": {
                         "c": {"type": "String"}
                     }
@@ -473,32 +479,32 @@ class TestSQLWorker(TestCase):
                 body,
                 self.logger)
 
-            _, engine, conn = worker._db_connect('testdb')
-
             # This should not raise an exception as it includes the new col
-            assert engine.execute('INSERT INTO newtable VALUES (1, 2, "hi");')
+            assert engine.execute('INSERT INTO ' + table_name +' VALUES (1, 2, "hi");')
 
             # This should raise an exception since it doesn't have 3 values
             self.assertRaises(
                 sqlalchemy.exc.OperationalError,
                  engine.execute,
-                 'INSERT INTO newtable VALUES (1, 2);')
+                 'INSERT INTO ' + table_name + ' VALUES (1, 2);')
 
     def test_insert(self):
         """
         Verify inserting works.
         """
+        table_name = 'test_insert'
         with nested(
                 mock.patch('pika.SelectConnection'),
                 mock.patch('replugin.sqlworker.SQLWorker.notify'),
                 mock.patch('replugin.sqlworker.SQLWorker.send')):
 
-            self._create_dummy_db()
-
             worker = sqlworker.SQLWorker(
                 MQ_CONF,
                 logger=self.app_logger,
                 config_file='conf/example.json')
+
+            _, engine, conn = worker._db_connect('testdb')
+            self._create_dummy_db(conn, table_name)
 
             worker._on_open(self.connection)
             worker._on_channel_open(self.channel)
@@ -508,7 +514,7 @@ class TestSQLWorker(TestCase):
                     "command": "sql",
                     "subcommand": "Insert",
                     "database": "testdb",
-                    "name": "newtable",
+                    "name": table_name,
                     "rows": [
                         {
                             "a": 10,
@@ -530,11 +536,9 @@ class TestSQLWorker(TestCase):
                 body,
                 self.logger)
 
-            _, engine, conn = worker._db_connect('testdb')
-
             # This should not raise an exception as it includes the new col
             result = engine.execute(
-                'SELECT COUNT(*) from newtable;').fetchall()[0][0]
+                'SELECT COUNT(*) from ' + table_name + ';').fetchall()[0][0]
             # We should have 2 rows inserted
             assert result == 2
 
@@ -542,19 +546,21 @@ class TestSQLWorker(TestCase):
         """
         Verify deleting works.
         """
+        table_name = 'test_delete'
         with nested(
                 mock.patch('pika.SelectConnection'),
                 mock.patch('replugin.sqlworker.SQLWorker.notify'),
                 mock.patch('replugin.sqlworker.SQLWorker.send')):
 
-            tmp_con = self._create_dummy_db()
-            tmp_con.execute('INSERT INTO newtable VALUES (0, 0);')
-            tmp_con.execute('INSERT INTO newtable VALUES (1, 1);')
-            tmp_con.commit()
             worker = sqlworker.SQLWorker(
                 MQ_CONF,
                 logger=self.app_logger,
                 config_file='conf/example.json')
+
+            _, engine, conn = worker._db_connect('testdb')
+            self._create_dummy_db(conn, table_name)
+            conn.execute('INSERT INTO ' + table_name + ' VALUES (0, 0);')
+            conn.execute('INSERT INTO ' + table_name + ' VALUES (1, 1);')
 
             worker._on_open(self.connection)
             worker._on_channel_open(self.channel)
@@ -564,7 +570,7 @@ class TestSQLWorker(TestCase):
                     "command": "sql",
                     "subcommand": "Delete",
                     "database": "testdb",
-                    "name": "newtable",
+                    "name": table_name,
                     "where": [
                         {
                             "a": 0,
@@ -582,10 +588,8 @@ class TestSQLWorker(TestCase):
                 body,
                 self.logger)
 
-            _, engine, conn = worker._db_connect('testdb')
-
             # This should not raise an exception as it includes the new col
             result = engine.execute(
-                'SELECT COUNT(*) from newtable;').fetchall()[0][0]
+                'SELECT COUNT(*) from ' + table_name + ';').fetchall()[0][0]
             # We should have 1 row left as we deleted the other row
             assert result == 1
