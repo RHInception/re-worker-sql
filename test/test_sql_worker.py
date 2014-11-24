@@ -710,12 +710,10 @@ class TestSQLWorker(TestCase):
                     "subcommand": "Delete",
                     "database": "testdb",
                     "name": table_name,
-                    "where": [
-                        {
+                    "where": {
                             "a": 0,
                             "b": 0,
-                        },
-                    ],
+                    },
                 },
             }
 

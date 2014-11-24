@@ -10,7 +10,7 @@
 Name: re-worker-sql
 Summary: Basic sql worker for Release Engine
 Version: 0.0.1
-Release: 5%{?dist}
+Release: 6%{?dist}
 
 Group: Applications/System
 License: AGPLv3
@@ -42,6 +42,9 @@ modification functionality.
 
 
 %changelog
+* Mon Nov 24 2014 Steve Milner <stevem@gnulinux.net> - 0.0.1-6
+- Bug fix for sql:Delete.
+
 * Mon Nov 24 2014 Steve Milner <stevem@gnulinux.net> - 0.0.1-5
 - Updates to tests.
 

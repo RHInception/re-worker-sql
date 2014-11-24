@@ -361,10 +361,9 @@ class SQLWorker(Worker):
                 self.app_logger.info('Attempting to delete from a table ...')
                 table = Table(table_name, metadata, autoload=True)
                 delete = table.delete()
-                for where in wheres:
-                    for colname, valdata in where.items():
-                        col = getattr(table.c, colname)
-                        delete = delete.where(col == valdata)
+                for colname, valdata in wheres.items():
+                    col = getattr(table.c, colname)
+                    delete = delete.where(col == valdata)
                 engine.execute(delete)
                 return "Delete statements done"
             except OperationalError, oe:
