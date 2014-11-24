@@ -20,7 +20,8 @@ SQL worker.
 import sqlalchemy.types
 
 from sqlalchemy import Table, Column, MetaData, create_engine
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import (
+    OperationalError, ProgrammingError, NoSuchTableError)
 from sqlalchemy.orm import sessionmaker
 
 from alembic.migration import MigrationContext
@@ -288,7 +289,7 @@ class SQLWorker(Worker):
                     mc = Column(k, col_type(length), autoincrement=False, **v)
                     mctx.impl.add_column(table_name, mc)
                 return "Added columns"
-            except OperationalError, oe:
+            except (OperationalError, NoSuchTableError), oe:
                 raise SQLWorkerError(
                     'Could not execute the given alter %s' % oe.message)
         except KeyError, ke:
@@ -327,7 +328,7 @@ class SQLWorker(Worker):
                     i = table.insert().values(**row_data)
                     engine.execute(i)
                 return "Insert statements done"
-            except OperationalError, oe:
+            except (OperationalError, NoSuchTableError), oe:
                 raise SQLWorkerError(
                     'Could not execute the given insert %s' % oe.message)
         except KeyError, ke:

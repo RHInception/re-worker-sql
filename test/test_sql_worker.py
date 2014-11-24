@@ -238,6 +238,47 @@ class TestSQLWorker(TestCase):
                     sqlalchemy.exc.ProgrammingError):
                 pass
 
+    def test_drop_table_failure(self):
+        """
+        Verify drop_table fails when the table does not exist.
+        """
+        table_name = 'test_droptable_failure'
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.sqlworker.SQLWorker.notify'),
+                mock.patch('replugin.sqlworker.SQLWorker.send')):
+
+            worker = sqlworker.SQLWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+
+            _, engine, conn = worker._db_connect('testdb')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "sql",
+                    "subcommand": "DropTable",
+                    "database": "testdb",
+                    "name": table_name,
+                },
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            assert self.app_logger.error.call_count == 1
+            assert worker.send.call_args[0][2]['status'] == 'failed'
+
     def test_execute_sql_with_ddl(self):
         """
         Verify that raw ddl sql can be executed.
@@ -488,10 +529,53 @@ class TestSQLWorker(TestCase):
             # This should raise an exception since it doesn't have 3 values
             try:
                  engine.execute('INSERT INTO ' + table_name + ' VALUES (1, 2);')
-                 self.fail('The table was not dropped')
+                 self.fail('The values should not have worked.')
             except (sqlalchemy.exc.OperationalError,
                     sqlalchemy.exc.ProgrammingError):
                 pass
+
+    def test_add_table_columns_failure(self):
+        """
+        Verify add_table_column fails when a col can not be added.
+        """
+        table_name = 'test_add_table_columns_fail'
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.sqlworker.SQLWorker.notify'),
+                mock.patch('replugin.sqlworker.SQLWorker.send')):
+
+            worker = sqlworker.SQLWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            _, engine, conn = worker._db_connect('testdb')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "sql",
+                    "subcommand": "AddTableColumns",
+                    "database": "testdb",
+                    "name": table_name,
+                    "columns": {
+                        "c": {"type": "String", "length": 255}
+                    }
+                },
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            assert self.app_logger.error.call_count == 1
+            assert worker.send.call_args[0][2]['status'] == 'failed'
 
     def test_insert(self):
         """
@@ -546,6 +630,56 @@ class TestSQLWorker(TestCase):
                 'SELECT COUNT(*) from ' + table_name + ';').fetchall()[0][0]
             # We should have 2 rows inserted
             assert result == 2
+
+    def test_insert_fail(self):
+        """
+        Verify inserting fails if there isn't a table.
+        """
+        table_name = 'test_insert'
+        with nested(
+                mock.patch('pika.SelectConnection'),
+                mock.patch('replugin.sqlworker.SQLWorker.notify'),
+                mock.patch('replugin.sqlworker.SQLWorker.send')):
+
+            worker = sqlworker.SQLWorker(
+                MQ_CONF,
+                logger=self.app_logger,
+                config_file='conf/example.json')
+
+            _, engine, conn = worker._db_connect('testdb')
+
+            worker._on_open(self.connection)
+            worker._on_channel_open(self.channel)
+
+            body = {
+                "parameters": {
+                    "command": "sql",
+                    "subcommand": "Insert",
+                    "database": "testdb",
+                    "name": table_name,
+                    "rows": [
+                        {
+                            "a": 10,
+                            "b": 2,
+                        },
+                        {
+                            "a": 15,
+                            "b": 40,
+                        }
+                    ],
+                },
+            }
+
+            # Execute the call
+            worker.process(
+                self.channel,
+                self.basic_deliver,
+                self.properties,
+                body,
+                self.logger)
+
+            assert self.app_logger.error.call_count == 1
+            assert worker.send.call_args[0][2]['status'] == 'failed'
 
     def test_delete(self):
         """
