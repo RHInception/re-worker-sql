@@ -10,12 +10,12 @@
 Name: re-worker-sql
 Summary: Basic sql worker for Release Engine
 Version: 0.0.1
-Release: 6%{?dist}
+Release: 7%{?dist}
 
 Group: Applications/System
 License: AGPLv3
 Source0: %{_src_name}-%{version}.tar.gz
-Url: https://sqlhub.com/rhinception/re-worker-sql
+Url: https://github.com/rhinception/re-worker-sql
 
 BuildArch: noarch
 BuildRequires: python2-devel, python-setuptools
@@ -42,6 +42,9 @@ modification functionality.
 
 
 %changelog
+* Tue Dec  9 2014 Steve Milner <stevem@gnulinux.net> - 0.0.1-7
+- Fix URL field in SPEC due to search and replace.
+
 * Mon Nov 24 2014 Steve Milner <stevem@gnulinux.net> - 0.0.1-6
 - Bug fix for sql:Delete.
 
