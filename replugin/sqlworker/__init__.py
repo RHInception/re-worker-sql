@@ -306,7 +306,10 @@ class SQLWorker(Worker):
                         del v['length']
                     mc = Column(k, col_type(length), autoincrement=False, **v)
                     mctx.impl.add_column(table_name, mc)
-                return '%s column(s) created' % count
+
+                msg = '%s column(s) created' % count
+                output.info(msg)
+                return msg
             except (OperationalError, NoSuchTableError), oe:
                 raise SQLWorkerError(
                     'Could not execute the given alter %s' % oe.message)

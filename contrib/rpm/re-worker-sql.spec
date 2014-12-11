@@ -10,7 +10,7 @@
 Name: re-worker-sql
 Summary: Basic sql worker for Release Engine
 Version: 0.0.2
-Release: 1%{?dist}
+Release: 2%{?dist}
 
 Group: Applications/System
 License: AGPLv3
@@ -42,6 +42,9 @@ modification functionality.
 
 
 %changelog
+* Thu Dec 11 2014 Steve Milner <stevem@gnulinux.net> - 0.0.2-2
+- Bug fix on verbose output.
+
 * Thu Dec 11 2014 Steve Milner <stevem@gnulinux.net> - 0.0.2-1
 - Output to the output worker is now more verbose.
 
