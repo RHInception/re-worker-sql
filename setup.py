@@ -27,7 +27,7 @@ except ImportError:
 
 setup(
     name='reworkersql',
-    version='0.0.1',
+    version='0.0.2',
     description='',
     author='See AUTHORS file',
     author_email='inception@redhat.com',

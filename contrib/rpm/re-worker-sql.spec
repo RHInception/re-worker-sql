@@ -9,8 +9,8 @@
 
 Name: re-worker-sql
 Summary: Basic sql worker for Release Engine
-Version: 0.0.1
-Release: 7%{?dist}
+Version: 0.0.2
+Release: 1%{?dist}
 
 Group: Applications/System
 License: AGPLv3
@@ -42,6 +42,9 @@ modification functionality.
 
 
 %changelog
+* Thu Dec 11 2014 Steve Milner <stevem@gnulinux.net> - 0.0.2-1
+- Output to the output worker is now more verbose.
+
 * Tue Dec  9 2014 Steve Milner <stevem@gnulinux.net> - 0.0.1-7
 - Fix URL field in SPEC due to search and replace.
 

@@ -86,6 +86,8 @@ class SQLWorker(Worker):
                 new_table.append_column(new_column)
             try:
                 new_table.create()
+                output.info('Created new table %s' % table_name)
+                return 'Table created'
             except (OperationalError, ProgrammingError), oe:
                 raise SQLWorkerError(
                     'Could not create the table %s: %s' % (
@@ -121,10 +123,14 @@ class SQLWorker(Worker):
                 if (r.context.isdelete or
                         r.context.isupdate or
                         r.context.isinsert):
-                    return "%s rows effected" % r.rowcount
+                    msg = 'SQL executed. %s rows effected' % r.rowcount
+                    output.info(msg)
+                    return msg
                 elif r.context.isddl:
+                    output.info('DDL successfully executed.')
                     return "DDL executed"
                 else:
+                    output.info('SQL successfully executed.')
                     return "SQL executed"
             except (OperationalError, ProgrammingError), oe:
                 raise SQLWorkerError(
@@ -158,11 +164,13 @@ class SQLWorker(Worker):
             try:
                 self.app_logger.info('Attempting to drop a table ...')
                 ops.drop_table(table_name)
+                output.info('Dropped table %s.' % table_name)
                 return "Table %s droppped" % table_name
             except OperationalError, oe:
                 raise SQLWorkerError(
                     'Could not execute the given drop table %s' % oe.message)
             session.flush()
+            return 'Table dropped'
         except KeyError, ke:
             output.error('Unable to execute drop table. Missing input %s' % (
                ke))
@@ -192,9 +200,13 @@ class SQLWorker(Worker):
 
             try:
                 self.app_logger.info('Attempting to drop columns ...')
+                count = 0
                 for column in columns:
+                    count = count + 1
                     ops.drop_column(table_name, column)
-                return "DDL executed"
+                    output.info('Dropped column %s on table %s.' % (
+                        column, table_name))
+                return '%s column(s) dropped' % count
             except OperationalError, oe:
                 raise SQLWorkerError(
                     'Could not execute the given alter %s' % oe.message)
@@ -229,7 +241,9 @@ class SQLWorker(Worker):
             try:
                 self.app_logger.info('Attempting to alter a table ...')
                 add_cols = []
+                count = 0
                 for k, v in columns.items():
+                    count = count + 1
                     col_type = getattr(sqlalchemy.types, v['type'])
                     del v['type']
                     # Check for length of column
@@ -243,7 +257,9 @@ class SQLWorker(Worker):
                         'autoincrement': mc.autoincrement,
                     }
                     mctx.impl.alter_column(table_name, k, **new_kwargs)
-                return "DDL executed"
+                    output.info('Altered column %s on table %s.' % (
+                        k, table_name))
+                return '%s column(s) altered' % count
             except OperationalError, oe:
                 raise SQLWorkerError(
                     'Could not execute the given alter %s' % oe.message)
@@ -279,7 +295,9 @@ class SQLWorker(Worker):
             try:
                 self.app_logger.info('Attempting to alter a table ...')
                 add_cols = []
+                count = 0
                 for k, v in columns.items():
+                    count = count + 1
                     col_type = getattr(sqlalchemy.types, v['type'])
                     del v['type']
                     # Check for length of column
@@ -288,7 +306,7 @@ class SQLWorker(Worker):
                         del v['length']
                     mc = Column(k, col_type(length), autoincrement=False, **v)
                     mctx.impl.add_column(table_name, mc)
-                return "Added columns"
+                return '%s column(s) created' % count
             except (OperationalError, NoSuchTableError), oe:
                 raise SQLWorkerError(
                     'Could not execute the given alter %s' % oe.message)
@@ -321,13 +339,17 @@ class SQLWorker(Worker):
             try:
                 self.app_logger.info('Attempting to insert into a table ...')
                 table = Table(table_name, metadata, autoload=True)
+                count = 0
                 for row in rows:
+                    count = count + 1
                     row_data = {}
                     for k, v in row.items():
                         row_data[k] = v
                     i = table.insert().values(**row_data)
-                    engine.execute(i)
-                return "Insert statements done"
+                    result_proxy = engine.execute(i)
+                    output.info('Insert number %s into table %s finished.' % (
+                        count, table_name))
+                return '%s Insert statements done' % count
             except (OperationalError, NoSuchTableError), oe:
                 raise SQLWorkerError(
                     'Could not execute the given insert %s' % oe.message)
@@ -364,8 +386,11 @@ class SQLWorker(Worker):
                 for colname, valdata in wheres.items():
                     col = getattr(table.c, colname)
                     delete = delete.where(col == valdata)
-                engine.execute(delete)
-                return "Delete statements done"
+                result_proxy = engine.execute(delete)
+                msg = 'Deleted %s rows in %s.' % (
+                    result_proxy.rowcount, table_name)
+                output.info(msg)
+                return msg
             except OperationalError, oe:
                 raise SQLWorkerError(
                     'Could not execute the given delete %s' % oe.message)
